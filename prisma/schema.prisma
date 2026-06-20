@@ -1,0 +1,169 @@
+// Schema do Estoque & Patrimônio API
+// Docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum MovementType {
+  IN // entrada
+  OUT // saída
+}
+
+enum AssetStatus {
+  ACTIVE // em uso
+  MAINTENANCE // em manutenção
+  RETIRED // baixado
+}
+
+model User {
+  id                 String   @id @default(uuid())
+  email              String   @unique
+  password           String
+  name               String
+  role               Role     @default(USER)
+  hashedRefreshToken String? // refresh token rotacionado (hash)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  categories Category[]
+  locations  Location[]
+  suppliers  Supplier[]
+  items      Item[]
+  movements  StockMovement[]
+  assets     Asset[]
+  apiKeys    ApiKey[]
+}
+
+model ApiKey {
+  id         String    @id @default(uuid())
+  name       String
+  hashedKey  String    @unique // sha256 da chave completa
+  prefix     String
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Category {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  items Item[]
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+model Location {
+  id        String   @id @default(uuid())
+  name      String // setor/sala
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  items  Item[]
+  assets Asset[]
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+model Supplier {
+  id        String   @id @default(uuid())
+  name      String
+  contact   String? // telefone/e-mail
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  items Item[]
+
+  @@index([userId])
+}
+
+model Item {
+  id        String   @id @default(uuid())
+  name      String
+  sku       String? // código do produto
+  minStock  Int      @default(0) // estoque mínimo (gatilho de alerta)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  locationId String?
+  location   Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+  supplierId String?
+  supplier   Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+
+  movements StockMovement[]
+
+  @@index([userId])
+  @@index([categoryId])
+}
+
+model StockMovement {
+  id        String       @id @default(uuid())
+  type      MovementType
+  quantity  Int // sempre positivo; o tipo (IN/OUT) define o sinal
+  reason    String?
+  date      DateTime     @default(now())
+  createdAt DateTime     @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  itemId String
+  item   Item   @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([itemId])
+}
+
+model Asset {
+  id          String      @id @default(uuid())
+  tag         String // nº de tombamento/patrimônio
+  description String
+  status      AssetStatus @default(ACTIVE)
+  responsible String? // responsável
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  locationId String?
+  location   Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, tag])
+  @@index([userId])
+}
